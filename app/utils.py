@@ -2,6 +2,45 @@ from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 import base64
+import os
+import logging
+from datetime import datetime
+
+def setup_logging(name: str = None) -> logging.Logger:
+    """Set up logging configuration for the application.
+    
+    Args:
+        name: Optional name for the logger. If not provided, uses the module name.
+    
+    Returns:
+        A configured logger instance.
+    """
+    # Get the absolute path to the project root
+    project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    
+    # Create logs directory in project root if it doesn't exist
+    logs_dir = os.path.join(project_root, 'logs')
+    if not os.path.exists(logs_dir):
+        os.makedirs(logs_dir)
+    
+    # Create a log file with timestamp
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    log_file = os.path.join(logs_dir, f'web_navigator_{timestamp}.log')
+    
+    # Configure logging if it hasn't been configured yet
+    if not logging.getLogger().handlers:
+        logging.basicConfig(
+            level=logging.INFO,
+            format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+            handlers=[
+                logging.FileHandler(log_file),
+                logging.StreamHandler()
+            ]
+        )
+    
+    # Get or create a logger with the specified name
+    logger = logging.getLogger(name or __name__)
+    return logger
 
 def capture_screenshot(driver) -> bytes:
     """Capture and return a screenshot of the current page."""
