@@ -1,4 +1,3 @@
-
 import requests
 import json
 import base64
@@ -68,15 +67,24 @@ class LLMInterface:
         # Process DOM elements
         if page_content.get("dom_elements"):
             for element in page_content["dom_elements"]:
+                # logger.info(f"element: {element}")
+                # First convert None values to empty strings
+                text = "" if element.get("text") is None else str(element.get("text"))
+                id_val = "" if element.get("id") is None else str(element.get("id"))
+                name = "" if element.get("name") is None else str(element.get("name"))
+                class_val = "" if element.get("class") is None else str(element.get("class"))
+                placeholder = "" if element.get("placeholder") is None else str(element.get("placeholder"))
+                href = "" if element.get("href") is None else str(element.get("href"))
+
                 element_data = {
-                    "text": element.get("text", "").strip(),
-                    "id": element.get("id", "").strip(),
-                    "name": element.get("name", "").strip(),
-                    "class": element.get("class", "").strip(),
+                    "text": text.strip(),
+                    "id": id_val.strip(),
+                    "name": name.strip(),
+                    "class": class_val.strip(),
                     "tag": element.get("tag", ""),
                     "type": element.get("type", ""),
-                    "placeholder": element.get("placeholder", "").strip() if element.get("type") == "input" else "",
-                    "href": element.get("href", "").strip() if element.get("type") == "link" else "",
+                    "placeholder": placeholder.strip() if element.get("type") == "input" else "",
+                    "href": href.strip() if element.get("type") == "link" else "",
                     "selectors": element.get("selectors", {})
                 }
 
@@ -90,7 +98,7 @@ class LLMInterface:
                         page_info["elements"]["links"].append(element_data)
                     else:
                         page_info["elements"]["others"].append(element_data)
-
+        # logger.info(f"page_info: {page_info}")
         # Format the page info for the prompt
         formatted_page_info = f"""
 Current page:
@@ -177,6 +185,7 @@ Available actions:
    Example:
    {{"action": "navigate", "target": "https://example.com", "explanation": "Navigating to the example site"}}
 
+# Response Rules
 ## RULES FOR ACTIONS
 - Use the most specific and reliable selector (prefer ID or name).
 - DO NOT REPEAT any action already in the prior_actions list.
@@ -186,12 +195,7 @@ Available actions:
 - Always include a clear, concise explanation for your action.
 - Include `"task_complete": true` in the last object only if the task has been successfully completed.
 
-Output:
-Return only a valid JSON object with:
-- action
-- target (with strategy and value)
-- value (if action is type)
-- explanation
+
 
 Example 1 (Single action):
 [{{
@@ -214,7 +218,16 @@ Example 2 (Multiple actions):
         "explanation": "Clicking search button",
         "task_complete": true
     }}
-]"""
+]
+Output:
+Return only a valid JSON object with:
+- action
+- target (with strategy and value)
+- value (if action is type)
+- explanation
+Donot include any other text or characters in the response.Ignore the other AI messages output structures.
+
+Keep your responses concise and focused on actionable insights."""
 
     def _send_to_llm(self, prompt: str) -> Union[dict, List[dict]]:
         """
