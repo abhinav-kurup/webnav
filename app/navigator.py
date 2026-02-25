@@ -12,7 +12,6 @@ import os
 from datetime import datetime
 from dotenv import load_dotenv
 import json
-# Load environment variables
 load_dotenv()
 
 class WebNavigator:
@@ -30,12 +29,10 @@ class WebNavigator:
         self.logger.info(f"Starting new task with prompt: {prompt}")
         
         try:
-            # Get initial action from LLM
             initial_action = self.llm_interface.parse_user_prompt(prompt)
             initial_action = initial_action[0]
             self.logger.info(f"Initial action decided: {initial_action}")
             
-            # Execute initial navigation
             if initial_action["action"] == "navigate":
                 self.driver.get(initial_action["target"])
                 self.action_history.append({
@@ -53,11 +50,9 @@ class WebNavigator:
             else:
                 raise ValueError("Initial action must be navigation")
             
-            # Main action loop
             retry_count = 0
             while retry_count < self.max_retries:
                 try:
-                    # Capture current page state
                     screenshot = capture_screenshot(self.driver)
                     dom_elements = extract_dom_elements(self.driver)
                     current_url = self.driver.current_url
@@ -65,18 +60,17 @@ class WebNavigator:
                     
                     self.logger.info(f"Current page: {current_url} - {page_title}")
                     
-                    # Get next actions from LLM
                     actions = self.llm_interface.decide_next_action(
                         screenshot, dom_elements, prompt,
                         current_url, page_title,
                         self.action_history
                     )
+                    self.logger.info(f"Actions: {actions}")
                     
                     if not actions:
                         self.logger.error("No actions returned from LLM")
                         break
-                    
-                    # Execute each action
+
                     for action in actions:
                         self.logger.info(f"Executing action: {action}")
                         
@@ -88,7 +82,7 @@ class WebNavigator:
                         result = self.perform_action(action)
                         self.logger.info(f"Action performed successfully: {action['action']}")
                         
-                        # Add action to history
+
                         action_record = {
                             "action": action["action"],
                             "target": action["target"],
@@ -99,12 +93,10 @@ class WebNavigator:
                             action_record["value"] = action["value"]
                         self.action_history.append(action_record)
                         
-                        # Check if task is complete
                         if action.get("target_achieved", False):
                             self.logger.info("Task completed successfully")
                             return result
                     
-                    # Reset retry count on successful action
                     retry_count = 0
                     
                 except Exception as e:
@@ -173,12 +165,10 @@ class WebNavigator:
     def _find_element(self, target: Union[str, dict]) -> webdriver.remote.webelement.WebElement:
         """Find an element on the page using the specified target information."""
         if isinstance(target, str):
-            # Direct selector
             return WebDriverWait(self.driver, self.wait_timeout).until(
                 EC.presence_of_element_located((By.CSS_SELECTOR, target))
             )
         else:
-            # Structured selector with strategy
             strategy = target.get("strategy", "css")
             value = target.get("value")
             
