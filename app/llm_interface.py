@@ -9,10 +9,8 @@ from dotenv import load_dotenv
 from pydantic import BaseModel, Field
 from app.utils import setup_logging
 
-# Load environment variables
 load_dotenv()
 
-# Configure logging
 logger = setup_logging(__name__)
 
 class WebAction(BaseModel):
@@ -33,7 +31,6 @@ class LLMInterface:
         """Prepare the prompt for the LLM."""
         format_instructions = self.parser.get_format_instructions()
         recent_actions = action_history[-5:] if action_history else []
-        logger.info(f"prepare prompt action history: {action_history}")
         
         action_context = ""
         if recent_actions:
@@ -49,78 +46,80 @@ class LLMInterface:
                 action_context += f" at {action.get('url', 'unknown URL')}\n"
         logger.info(f"action context: {action_context}")
 
-        # Structure page information
         page_info = {
             "url": page_content.get("url", ""),
             "title": page_content.get("title", ""),
             "elements": self._process_dom_elements(page_content.get("dom_elements", []))
         }
 
+        if page_info["elements"]["inputs"][0].get("id","") == "g-recaptcha-response":
+            logger.info("Recaptcha detected, skipping action generation")
+            return "captcha"
+
         formatted_page_info = self._format_page_info(page_info)
-        # - {format_instructions}: Output format
 
         return f""" You are a step-by-step website navigation agent. Your goal is to complete the following task:
 
->> OBJECTIVE: {prompt}
+        >> OBJECTIVE: {prompt}
 
-You are provided with:
-- {formatted_page_info}: Structured elements on the current page
-- {action_context}: List of previously taken actions
+        You are provided with:
+        - {formatted_page_info}: Structured elements on the current page
+        - {action_context}: List of previously taken actions
 
+        ---
 
----
+        ## Available Actions
+        1. **click** - Click an element  
+        - Example: {{"action": "click", "target": {{"strategy": "css", "value": "#submit"}}, "explanation": "Clicking the submit button"}}
 
-## Available Actions
-1. **click** - Click an element
-   - Example: {"action": "click", "target": {"strategy": "css", "value": "#submit"}, "explanation": "Clicking the submit button"}
+        2. **type** - Type into an input field  
+        - Example: {{"action": "type", "target": {{"strategy": "name", "value": "email"}}, "value": "user@example.com", "explanation": "Typing in the email"}}
 
-2. **type** - Type into an input field
-   - Example: {"action": "type", "target": {"strategy": "name", "value": "email"}, "value": "user@example.com", "explanation": "Typing in the email"}
+        3. **wait** - Pause for a few seconds  
+        - Example: {{"action": "wait", "target": "5", "explanation": "Waiting for the page to load"}}
 
-3. **wait** - Pause for a few seconds
-   - Example: {"action": "wait", "target": "5", "explanation": "Waiting for the page to load"}
+        4. **extract** - Get text from an element  
+        - Example: {{"action": "extract", "target": {{"strategy": "class", "value": "price"}}, "explanation": "Extracting price info"}}
 
-4. **extract** - Get text from an element
-   - Example: {"action": "extract", "target": {"strategy": "class", "value": "price"}, "explanation": "Extracting price info"}
+        5. **navigate** - Go to a different URL  
+        - Example: {{"action": "navigate", "target": "https://example.com", "explanation": "Navigating to the example site"}}
 
-5. **navigate** - Go to a different URL
-   - Example: {"action": "navigate", "target": "https://example.com", "explanation": "Navigating to the example site"}
+        ---
 
----
+        ## Action Guidelines
+        - Use the most **precise and reliable** selector (prefer ID > name > class > xpath).
+        - **Do not repeat** actions from `action_context`.
+        - Avoid actions that **change the page structure** unless completing the task.
+        - Choose only actions that are valid on the **current page**.
+        - Provide a **clear explanation** for each action.
+        - If task is fully completed, add `"task_complete": true` to the final action.
 
-## Action Guidelines
-- Use the most **precise and reliable** selector (prefer ID > name > class > xpath).
-- **Do not repeat** actions from `action_context`.
-- Avoid actions that **change the page structure** unless completing the task.
-- Choose only actions that are valid on the **current page**.
-- Provide a **clear explanation** for each action.
-- If task is fully completed, add `"task_complete": true` to the final action.
+        ---
 
----
+        ## Output Format
+        - A **JSON array** of 1 or more actions.
+        - Each object: `action`, `target`, `value` (for type), `explanation`
+        - No extra text. Return only the JSON.
 
-## Output Format
-- A **JSON array** of 1 or more actions.
-- Each object: `action`, `target`, `value` (for type), `explanation`
-- No extra text. Return only the JSON.
+        ---
 
----
+        ## Example (Multi-action):
+        [
+            {{
+                "action": "type",
+                "target": {{"strategy": "name", "value": "q"}},
+                "value": "web navigator",
+                "explanation": "Typing the search query"
+            }},
+            {{
+                "action": "click",
+                "target": {{"strategy": "name", "value": "btnK"}},
+                "explanation": "Clicking the search button",
+                "task_complete": true
+            }}
+        ]
+        """
 
-## Example (Multi-action):
-[
-  {
-    "action": "type",
-    "target": {"strategy": "name", "value": "q"},
-    "value": "web navigator",
-    "explanation": "Typing the search query"
-  },
-  {
-    "action": "click",
-    "target": {"strategy": "name", "value": "btnK"},
-    "explanation": "Clicking the search button",
-    "task_complete": true
-  }
-]
-"""
 
 
     def _process_dom_elements(self, elements: List[Dict]) -> Dict:
@@ -131,7 +130,7 @@ You are provided with:
             "links": [],
             "others": []
         }
-        
+        logger.info("entered process dom")
         for element in elements:
             element_data = {
                 "text": str(element.get("text", "")).strip(),
@@ -180,27 +179,29 @@ You are provided with:
 
     def _format_element(self, element: Dict, element_type: str) -> str:
         """Format a single element for the prompt."""
-        formatted = f"\n- {element_type}: {element['text'] or 'No text'}"
-        
-        if element['id']:
-            formatted += f" (ID: {element['id']})"
-        if element['name']:
-            formatted += f" (Name: {element['name']})"
-        if element['class']:
-            formatted += f" (Class: {element['class']})"
-        if element['placeholder']:
-            formatted += f" [Placeholder: {element['placeholder']}]"
-        if element['href']:
-            formatted += f" -> {element['href']}"
-        if element['selectors']:
-            selectors = ', '.join(f"{k}={v}" for k, v in element['selectors'].items() if v)
+        def safe_str(val):
+            return str(val).replace('%', '%%') if isinstance(val, str) else str(val)
+
+        formatted = f"\n- {element_type}: {safe_str(element.get('text') or 'No text')}"
+        if element.get('id'):
+            formatted += f" (ID: {safe_str(element['id'])})"
+        if element.get('name'):
+            formatted += f" (Name: {safe_str(element['name'])})"
+        if element.get('class'):
+            formatted += f" (Class: {safe_str(element['class'])})"
+        if element.get('placeholder'):
+            formatted += f" [Placeholder: {safe_str(element['placeholder'])}]"
+        if element.get('href'):
+            formatted += f" -> {safe_str(element['href'])}"
+        if element.get('selectors'):
+            selectors = ', '.join(f"{safe_str(k)}={safe_str(v)}" for k, v in element['selectors'].items() if v)
             formatted += f" [Selectors: {selectors}]"
-        
         return formatted
 
     def _send_to_llm(self, prompt: str) -> Union[dict, List[dict]]:
         """Send prompt to LLM and get response."""
         try:
+            logger.info(f"send_to_llm function ")
             headers = {"Content-Type": "application/json"}
             data = {
                 "model": self.model,
@@ -212,20 +213,30 @@ You are provided with:
             response.raise_for_status()
             
             result = response.json()
+            try:
+                with open("response.json", "a") as f:
+                    json.dump(result, f, indent=2)
+            except Exception as e:
+                logger.error(f"Failed to write response to file: {str(e)}")
             logger.info(f"Raw LLM response: {result}")
             
-            # Extract the response string and parse it as JSON
             response_str = result.get("response", "")
             if not response_str:
                 logger.error("Empty response from LLM")
                 raise ValueError("Empty response from LLM")
             
-            # Parse the response string as JSON
             try:
                 content = json.loads(response_str)
                 logger.info(f"Parsed response content: {content}")
+                try:
+                    with open("res.json", "a") as f:
+                        json.dump(content, f, indent=2)
+                except Exception as e:
+                    logger.error(f"Failed to write res to file: {str(e)}")
+
+                    
                 verified_response = self._parse_response(content)
-                logger.info(f"verified response: {verified_response}")
+                # logger.info(f"verified response: {verified_response}")
                 return verified_response
             except json.JSONDecodeError as e:
                 logger.error(f"Failed to parse response string as JSON: {str(e)}")
@@ -248,7 +259,6 @@ You are provided with:
                     "explanation": "Default navigation to Google search"
                 }]
             
-            # Validate the actions
             logger.info(f"response_data: {response_data}")
             if isinstance(response_data, list):
                 for action in response_data:
@@ -266,7 +276,6 @@ You are provided with:
                 raise ValueError("Response must be a JSON object or array")
         except Exception as e:
             logger.error(f"Error processing LLM response: {str(e)}")
-            # Return default navigation on error
             return [{
                 "action": "navigate",
                 "target": "https://www.google.com",
@@ -287,6 +296,8 @@ You are provided with:
         }
         
         formatted_prompt = self._prepare_prompt(prompt, page_content, action_history)
+        if formatted_prompt == "captcha":
+            return [{"action": "wait", "target": "10", "explanation": "Waiting for user to solve captcha"}]
         return self._send_to_llm(formatted_prompt)
 
     def parse_user_prompt(self, user_prompt: str) -> dict:
@@ -317,6 +328,5 @@ You are provided with:
         """
 
         response = self._send_to_llm(initial_prompt)
-        logger.info(f"response of main: {response}")
 
         return response
