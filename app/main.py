@@ -9,10 +9,8 @@ import uvicorn
 import os
 from dotenv import load_dotenv
 
-# Load environment variables
 load_dotenv()
 
-# Configure logging
 logger = setup_logging(__name__)
 
 app = FastAPI(title="Web Navigator API")
@@ -25,23 +23,35 @@ async def handle_navigation(request: PromptRequest):
     """Handle a navigation request by executing the specified prompt."""
     driver = None
     try:
-        # Initialize Chrome options
-        chrome_options = Options()
-        if os.getenv('BROWSER_HEADLESS', 'True').lower() == 'true':
-            chrome_options.add_argument("--headless")
-        chrome_options.add_argument("--no-sandbox")
-        chrome_options.add_argument("--disable-dev-shm-usage")
-        
-        # Initialize WebDriver
-        driver = webdriver.Chrome(options=chrome_options)
-        
-        # Initialize LLM interface and WebNavigator
+        # browser = os.getenv('BROWSER', 'chrome').lower()
+        # browser = "edge"
+        browser = "chrome"
+        driver = None
+        if browser == 'firefox':
+            from selenium.webdriver.firefox.options import Options as FirefoxOptions
+            firefox_options = FirefoxOptions()
+            # if os.getenv('BROWSER_HEADLESS', 'True').lower() == 'true':
+                # firefox_options.add_argument("--headless")
+            driver = webdriver.Firefox(options=firefox_options)
+        elif browser == 'edge':
+            from selenium.webdriver.edge.options import Options as EdgeOptions
+            edge_options = EdgeOptions()
+            # if os.getenv('BROWSER_HEADLESS', 'True').lower() == 'true':
+                # edge_options.add_argument("--headless")
+            driver = webdriver.Edge(options=edge_options)
+        else:  # Default to Chrome
+            chrome_options = Options()
+            # if os.getenv('BROWSER_HEADLESS', 'True').lower() == 'true':
+            #     chrome_options.add_argument("--headless")
+            chrome_options.add_argument("--no-sandbox")
+            chrome_options.add_argument("--disable-dev-shm-usage")
+            driver = webdriver.Chrome(options=chrome_options)
+
         llm_interface = LLMInterface()
         navigator = WebNavigator(driver, llm_interface)
-        
-        # Handle the navigation task
+
         result = navigator.handle_prompt(request.prompt)
-        
+
         return {"status": "success", "result": result}
     except Exception as e:
         logger.error(f"Error handling navigation request: {str(e)}")
